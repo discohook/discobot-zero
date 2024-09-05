@@ -4,7 +4,7 @@ This is the code for the Discobot#9898 bot account (which can no longer be invit
 
 ## Environment
 
-```toml
+```py
 APPLICATION_ID  # bot app id (i.e. discobot)
 DISCORD_TOKEN   # bot token
 MIGRATE_ID      # migrate to this app id (i.e. utils)
