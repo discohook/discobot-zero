@@ -66,7 +66,7 @@ export default {
     if (user.bot) return;
     const data = await getReactionRoleId(reaction);
     if (data === null) return;
-    const { roleId, position } = data;
+    const { roleId } = data;
 
     // Try to reduce double requests by guessing whether dutils will handle the event
     // const dutilsMember = reaction.message.guild.members.cache.get(
