@@ -16,13 +16,16 @@
     "discord.js": "^14.15.0",
     "dotenv": "^16.3.1",
     "drizzle-orm": "^0.33.0",
+    "json-bigint": "^1.0.0",
     "keyv": "^5.0.1",
     "postgres": "^3.4.4"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.8.3",
     "@sapphire/ts-config": "^5.0.0",
+    "@types/json-bigint": "^1.0.4",
     "@types/node": "^18.18.8",
+    "tsx": "^4.20.3",
     "typescript": "^5.2.2",
     "zod": "^3.22.4"
   }

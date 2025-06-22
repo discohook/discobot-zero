@@ -3,9 +3,6 @@ import { URL } from "node:url";
 import {
   ActivityType,
   Client,
-  Collection,
-  Events,
-  GatewayDispatchEvents,
   GatewayIntentBits,
   Options,
   Partials,

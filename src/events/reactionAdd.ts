@@ -2,7 +2,6 @@ import {
   Events,
   type MessageReaction,
   type PartialMessageReaction,
-  PermissionFlagsBits,
   type Role,
   Routes,
 } from "discord.js";
