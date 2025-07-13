@@ -113,33 +113,37 @@ manager.on(WebSocketShardEvents.Dispatch, async (event, shardId) => {
     return;
   }
 
-  switch (event.t) {
-    case GatewayDispatchEvents.GuildCreate: {
-      if (!guildIds.includes(event.d.id)) {
-        guildIds.push(event.d.id);
+  try {
+    switch (event.t) {
+      case GatewayDispatchEvents.GuildCreate: {
+        if (!guildIds.includes(event.d.id)) {
+          guildIds.push(event.d.id);
+        }
+        // await guildCreate.execute(event.d);
+        return;
       }
-      // await guildCreate.execute(event.d);
-      return;
+      case GatewayDispatchEvents.GuildDelete: {
+        // hard to know whether utils is in this server without querying with
+        // its token, so we can't reliably delete its records right now
+        if (event.d.unavailable) break;
+        const index = guildIds.indexOf(event.d.id);
+        if (index !== -1) guildIds.splice(index, 1);
+        return;
+      }
+      case GatewayDispatchEvents.MessageReactionAdd:
+        await reactionAdd.execute(rest, event.d);
+        return;
+      case GatewayDispatchEvents.MessageReactionRemove:
+        await reactionRemove.execute(rest, event.d);
+        return;
+      case GatewayDispatchEvents.InteractionCreate:
+        await interactionCreate(event.d);
+        return;
+      default:
+        break;
     }
-    case GatewayDispatchEvents.GuildDelete: {
-      // hard to know whether utils is in this server without querying with
-      // its token, so we can't reliably delete its records right now
-      if (event.d.unavailable) break;
-      const index = guildIds.indexOf(event.d.id);
-      if (index !== -1) guildIds.splice(index, 1);
-      return;
-    }
-    case GatewayDispatchEvents.MessageReactionAdd:
-      await reactionAdd.execute(rest, event.d);
-      return;
-    case GatewayDispatchEvents.MessageReactionRemove:
-      await reactionRemove.execute(rest, event.d);
-      return;
-    case GatewayDispatchEvents.InteractionCreate:
-      await interactionCreate(event.d);
-      return;
-    default:
-      break;
+  } catch (e) {
+    console.error(e);
   }
 });
 
