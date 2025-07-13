@@ -1,58 +1,80 @@
-import type { Command } from "./index.ts";
+import { ActionRowBuilder, ButtonBuilder } from "@discordjs/builders";
+import type { REST } from "@discordjs/rest";
+import { BitField } from "@sapphire/bitfield";
 import {
-  ActionRowBuilder,
-  ButtonBuilder,
   ButtonStyle,
-  ComponentType,
-  type GuildMember,
+  type APIGuildMember,
   PermissionFlagsBits,
-  PermissionsBitField,
-  RouteBases,
   Routes,
-} from "discord.js";
+  type APIChatInputApplicationCommandGuildInteraction,
+  type APIWebhook,
+  type APIInteraction,
+  type RESTPostAPIInteractionCallbackJSONBody,
+  InteractionResponseType,
+  type APIInteractionResponseCallbackData,
+  MessageFlags,
+  type RESTPostAPIInteractionCallbackWithResponseResult,
+  type APIMessageComponentButtonInteraction,
+  type APIActionRowComponent,
+  type APIButtonComponent,
+} from "discord-api-types/v10";
 
-const inviteUrl = `${RouteBases.api}${Routes.oauth2Authorization()}?client_id=${process.env.MIGRATE_ID}`;
+const inviteUrl = `https://discord.com${Routes.oauth2Authorization()}?client_id=${process.env.MIGRATE_ID}&scope=bot+applications.commands`;
+
+const PermissionsBitField = new BitField(PermissionFlagsBits);
+
+const reply = (
+  rest: REST,
+  interaction: APIInteraction,
+  body: APIInteractionResponseCallbackData,
+): Promise<RESTPostAPIInteractionCallbackWithResponseResult> =>
+  rest.post(Routes.interactionCallback(interaction.id, interaction.token), {
+    body: {
+      type: InteractionResponseType.ChannelMessageWithSource,
+      data: body,
+    } satisfies RESTPostAPIInteractionCallbackJSONBody,
+  }) as Promise<RESTPostAPIInteractionCallbackWithResponseResult>;
 
 export default {
-  data: {
-    name: "reaction-role",
-    description: "Reaction roles are no longer managed through this bot!",
-    dm_permission: false,
-    default_member_permissions: new PermissionsBitField(
-      PermissionFlagsBits.ManageMessages | PermissionFlagsBits.AddReactions,
-    ).toJSON(),
-  },
-  async execute(interaction) {
-    let utilsMember: GuildMember | undefined;
+  async execute(
+    rest: REST,
+    interaction: APIChatInputApplicationCommandGuildInteraction,
+  ) {
+    let utilsMember: APIGuildMember | undefined;
     try {
-      utilsMember = await interaction.guild.members.fetch(
-        process.env.MIGRATE_ID,
-      );
+      utilsMember = (await rest.get(
+        Routes.guildMember(interaction.guild_id, process.env.MIGRATE_ID),
+      )) as APIGuildMember;
     } catch {}
 
     let botWebhooks = -1;
     try {
-      const webhooks = await interaction.guild.fetchWebhooks();
+      const webhooks = (await rest.get(
+        Routes.guildWebhooks(interaction.guild_id),
+      )) as APIWebhook[];
       botWebhooks = webhooks.filter(
-        (w) => w.applicationId === interaction.client.application.id,
-      ).size;
+        (w) => w.application_id === interaction.application_id,
+      ).length;
     } catch {}
 
     if (utilsMember) {
       const leaveButton = new ButtonBuilder()
         .setCustomId("leave")
         .setStyle(ButtonStyle.Danger)
-        .setLabel("Leave");
+        .setLabel("Remove Discobot");
       const canRemoveBot =
         botWebhooks === 0 &&
-        interaction.memberPermissions.has(PermissionFlagsBits.KickMembers);
+        PermissionsBitField.has(
+          BigInt(interaction.member.permissions),
+          PermissionFlagsBits.KickMembers,
+        );
 
-      const response = await interaction.reply({
+      await reply(rest, interaction, {
         content: [
           "Hey there, thanks for using Discohook. We have switched bot",
           "accounts for all Discord features, which means",
           `<@${process.env.MIGRATE_ID}> is currently handling your reaction`,
-          "roles.\n\n",
+          "roles (if it has appropriate permissions).\n\n",
           ...(botWebhooks === 0
             ? [
                 "This server has no bot-owned webhooks, so you can remove this",
@@ -61,46 +83,26 @@ export default {
             : botWebhooks === -1
               ? [
                   "If there are still webhooks owned by",
-                  `<@${interaction.client.user.id}>, you should not remove`,
+                  `<@${interaction.application_id}>, you should not remove`,
                   "this bot. Doing so will delete those webhooks.",
                 ]
               : [
                   `There are still ${botWebhooks} webhooks owned by`,
-                  `<@${interaction.client.user.id}>, so you should not remove`,
+                  `<@${interaction.application_id}>, so you should not remove`,
                   "this bot. Doing so will delete those webhooks.",
                 ]),
         ].join(" "),
         components: canRemoveBot
-          ? [new ActionRowBuilder<ButtonBuilder>().addComponents(leaveButton)]
+          ? [
+              new ActionRowBuilder<ButtonBuilder>()
+                .addComponents(leaveButton)
+                .toJSON(),
+            ]
           : [],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
-
-      if (canRemoveBot) {
-        const disabledRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-          leaveButton.setDisabled(true),
-        );
-        try {
-          await response.awaitMessageComponent({
-            componentType: ComponentType.Button,
-            filter: (i) =>
-              i.customId === "leave" && i.user.id === interaction.user.id,
-            interactionResponse: response,
-            time: 600000,
-          });
-          await response.edit({
-            components: [disabledRow],
-          });
-          // await interaction.guild.leave();
-          console.log("leave");
-        } catch {
-          await response.edit({
-            components: [disabledRow],
-          });
-        }
-      }
     } else {
-      await interaction.reply({
+      await reply(rest, interaction, {
         content: [
           "Hey there, thanks for using Discohook. We have switched bot",
           "accounts for all in-Discord features (like reaction roles),",
@@ -114,25 +116,59 @@ export default {
             : botWebhooks === -1
               ? [
                   "If there are still webhooks owned by",
-                  `<@${interaction.client.user.id}>, you should not remove`,
+                  `<@${interaction.application_id}>, you should not remove`,
                   "this bot. Doing so will delete those webhooks.",
                 ]
               : [
                   `There are still ${botWebhooks} webhooks owned by`,
-                  `<@${interaction.client.user.id}>, so you should not remove`,
+                  `<@${interaction.application_id}>, so you should not remove`,
                   "this bot. Doing so will delete those webhooks.",
                 ]),
         ].join(" "),
         components: [
-          new ActionRowBuilder<ButtonBuilder>().addComponents(
-            new ButtonBuilder()
-              .setStyle(ButtonStyle.Link)
-              .setLabel("Invite Bot")
-              .setURL(inviteUrl),
-          ),
+          new ActionRowBuilder<ButtonBuilder>()
+            .addComponents(
+              new ButtonBuilder()
+                .setStyle(ButtonStyle.Link)
+                .setLabel("Invite Bot")
+                .setURL(inviteUrl),
+            )
+            .toJSON(),
         ],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
   },
-} satisfies Command;
+  buttons: {
+    leave: async (
+      rest: REST,
+      interaction: APIMessageComponentButtonInteraction,
+    ) => {
+      if (!interaction.guild_id) return;
+
+      const canKick = PermissionsBitField.has(
+        BigInt(interaction.member.permissions),
+        PermissionFlagsBits.KickMembers,
+      );
+      if (!canKick) return;
+
+      const row = new ActionRowBuilder<ButtonBuilder>(
+        interaction.message
+          .components[0] as APIActionRowComponent<APIButtonComponent>,
+      );
+      row.components[0].setDisabled(true);
+
+      await rest.post(
+        Routes.interactionCallback(interaction.id, interaction.token),
+        {
+          body: {
+            type: InteractionResponseType.UpdateMessage,
+            data: { components: [row.toJSON()] },
+          } satisfies RESTPostAPIInteractionCallbackJSONBody,
+        },
+      );
+      await rest.delete(Routes.userGuild(interaction.guild_id));
+      console.log("left", interaction.guild_id);
+    },
+  },
+};

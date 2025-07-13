@@ -1,12 +1,11 @@
 import {
-  Events,
-  type MessageReaction,
-  type PartialMessageReaction,
-  type Role,
+  type GatewayMessageReactionRemoveDispatchData,
   Routes,
-} from "discord.js";
-import type { Event } from "./index.ts";
+  type GatewayMessageReactionAddDispatchData,
+  type APIRole,
+} from "discord-api-types/v10";
 import { db, keyv } from "../singletons.js";
+import type { REST } from "@discordjs/rest";
 
 export interface ReactionRoleData {
   roleId: string | null;
@@ -14,14 +13,15 @@ export interface ReactionRoleData {
 }
 
 export const getReactionRoleId = async (
-  reaction: MessageReaction | PartialMessageReaction,
+  rest: REST,
+  reaction:
+    | GatewayMessageReactionAddDispatchData
+    | GatewayMessageReactionRemoveDispatchData,
 ): Promise<ReactionRoleData> => {
-  if (!reaction.message.guildId) {
-    return null;
-  }
+  if (!reaction.guild_id) return null;
 
   const emoji = reaction.emoji.id || reaction.emoji.name;
-  const key = `reaction-role:${reaction.message.id}:${emoji}`;
+  const key = `reaction-role:${reaction.message_id}:${emoji}`;
   const data = await keyv.get<ReactionRoleData>(key);
 
   if (data) {
@@ -33,7 +33,7 @@ export const getReactionRoleId = async (
   const rr = await db.query.reactionRoles.findFirst({
     where: (table, { and, eq }) =>
       and(
-        eq(table.messageId, BigInt(reaction.message.id)),
+        eq(table.messageId, BigInt(reaction.message_id)),
         eq(table.reaction, emoji),
       ),
     columns: { roleId: true },
@@ -44,9 +44,11 @@ export const getReactionRoleId = async (
   }
 
   const roleId = String(rr.roleId);
-  let role: Role;
+  let role: APIRole;
   try {
-    role = await reaction.message.guild.roles.fetch(roleId);
+    role = (await rest.get(
+      Routes.guildRole(reaction.guild_id, roleId),
+    )) as APIRole;
   } catch {
     await keyv.set(key, { roleId: null }, 600_000);
     return null;
@@ -60,10 +62,10 @@ export const getReactionRoleId = async (
 };
 
 export default {
-  name: Events.MessageReactionAdd,
-  async execute(reaction, user) {
-    if (user.bot) return;
-    const data = await getReactionRoleId(reaction);
+  async execute(rest: REST, reaction: GatewayMessageReactionAddDispatchData) {
+    if (!reaction.guild_id || reaction.member?.user?.bot) return;
+
+    const data = await getReactionRoleId(rest, reaction);
     if (data === null) return;
     const { roleId } = data;
 
@@ -81,14 +83,14 @@ export default {
     // }
 
     try {
-      await reaction.client.rest.put(
-        Routes.guildMemberRole(reaction.message.guildId, user.id, roleId),
+      await rest.put(
+        Routes.guildMemberRole(reaction.guild_id, reaction.user_id, roleId),
         {
-          reason: `Reaction role in channel ID ${reaction.message.channelId}. Migrate to Utils: /reaction-role`,
+          reason: `Reaction role in channel ID ${reaction.channel_id}. Migrate to Utils: /reaction-role`,
         },
       );
     } catch (e) {
       console.error(e);
     }
   },
-} satisfies Event<Events.MessageReactionAdd>;
+};

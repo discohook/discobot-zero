@@ -1,53 +1,148 @@
-import process from "node:process";
-import { URL } from "node:url";
+import { REST } from "@discordjs/rest";
+import { WebSocketManager, WebSocketShardEvents } from "@discordjs/ws";
 import {
   ActivityType,
-  Client,
+  type APIChatInputApplicationCommandGuildInteraction,
+  type APIInteraction,
+  GatewayDispatchEvents,
   GatewayIntentBits,
-  Options,
-  Partials,
+  InteractionType,
   PresenceUpdateStatus,
-} from "discord.js";
-import { loadCommands, loadEvents } from "./util/loaders.js";
-import { registerEvents } from "./util/registerEvents.js";
+} from "discord-api-types/v10";
+import { configDotenv } from "dotenv";
+import reactionAdd from "./events/reactionAdd.js";
+import reactionRemove from "./events/reactionRemove.js";
+import reactionRoleCmd from "./commands/reaction-role.js";
 
-// Initialize the client
-const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessageReactions],
-  partials: [
-    Partials.Message,
-    Partials.Channel,
-    Partials.GuildMember,
-    Partials.Reaction,
-    Partials.User,
-  ],
-  makeCache: Options.cacheWithLimits({
-    MessageManager: 0,
-    GuildMemberManager: {
-      keepOverLimit: (member) =>
-        member.id === member.client.user.id ||
-        member.id === process.env.MIGRATE_TO,
-      maxSize: 0,
-    },
-  }),
-  presence: {
+configDotenv();
+
+export interface Env {
+  APPLICATION_ID: string;
+  MIGRATE_ID: string;
+  DISCORD_TOKEN: string;
+  DATABASE_URL: string;
+}
+const env = process.env as unknown as Env;
+
+if (!env.DISCORD_TOKEN) {
+  throw Error("Missing required environment variables. Refer to README.");
+}
+
+const guildIds: string[] = [];
+
+const rest = new REST().setToken(env.DISCORD_TOKEN);
+const manager = new WebSocketManager({
+  token: env.DISCORD_TOKEN,
+  intents: GatewayIntentBits.Guilds | GatewayIntentBits.GuildMessageReactions,
+  rest,
+  initialPresence: {
+    status: PresenceUpdateStatus.Idle,
     activities: [
       {
-        name: "custom",
-        type: ActivityType.Custom,
+        name: "Custom",
         state: "Migrate! discohook.app/guide/deprecated/migrate-utils",
+        type: ActivityType.Custom,
       },
     ],
-    status: PresenceUpdateStatus.Idle,
+    afk: false,
+    since: null,
   },
 });
 
-// Load the events and commands
-const events = await loadEvents(new URL("events/", import.meta.url));
-const commands = await loadCommands(new URL("commands/", import.meta.url));
+manager.on(WebSocketShardEvents.Ready, (event, shardId) => {
+  guildIds.push(
+    ...event.guilds.map((g) => g.id).filter((id) => !guildIds.includes(id)),
+  );
+  const shards = event.shard ? event.shard[1] : 0;
+  console.log(
+    `${event.user.username}#${
+      event.user.discriminator
+    } ready on shard ID ${shardId} (of ${shards}) with ${
+      event.guilds.length
+    } guilds`,
+  );
+});
 
-// Register the event handlers
-registerEvents(commands, events, client);
+manager.on(WebSocketShardEvents.Hello, (shardId) => {
+  console.log(`[hello] Shard ID ${shardId}`);
+});
 
-// Login to the client
-void client.login(process.env.DISCORD_TOKEN);
+manager.on(WebSocketShardEvents.Resumed, (shardId) => {
+  console.log(`[resumed] Shard ID ${shardId}`);
+});
+
+manager.on(WebSocketShardEvents.Closed, (_, shardId) => {
+  console.log(`[closed] Shard ID ${shardId}`);
+});
+
+manager.on(WebSocketShardEvents.Error, (error, shardId) => {
+  console.error(`[error] Shard ID ${shardId}:`, error);
+});
+
+const interactionCreate = async (data: APIInteraction) => {
+  if (!data.guild_id) return;
+  if (
+    data.type === InteractionType.ApplicationCommand &&
+    data.data.name === "reaction-role"
+  ) {
+    await reactionRoleCmd.execute(
+      rest,
+      data as APIChatInputApplicationCommandGuildInteraction,
+    );
+  } else if (data.type === InteractionType.MessageComponent) {
+    const callback = reactionRoleCmd.buttons[data.data.custom_id];
+    if (callback) {
+      await callback(rest, data);
+    }
+  }
+};
+
+manager.on(WebSocketShardEvents.Dispatch, async (event, shardId) => {
+  if (
+    ![
+      // Guild state (internal and db)
+      GatewayDispatchEvents.GuildCreate,
+      GatewayDispatchEvents.GuildDelete,
+      // Reaction roles
+      GatewayDispatchEvents.MessageReactionAdd,
+      GatewayDispatchEvents.MessageReactionRemove,
+      // Notice command
+      GatewayDispatchEvents.InteractionCreate,
+    ].includes(event.t)
+  ) {
+    return;
+  }
+
+  switch (event.t) {
+    case GatewayDispatchEvents.GuildCreate: {
+      if (!guildIds.includes(event.d.id)) {
+        guildIds.push(event.d.id);
+      }
+      // await guildCreate.execute(event.d);
+      return;
+    }
+    case GatewayDispatchEvents.GuildDelete: {
+      // hard to know whether utils is in this server without querying with
+      // its token, so we can't reliably delete its records right now
+      if (event.d.unavailable) break;
+      const index = guildIds.indexOf(event.d.id);
+      if (index !== -1) guildIds.splice(index, 1);
+      return;
+    }
+    case GatewayDispatchEvents.MessageReactionAdd:
+      await reactionAdd.execute(rest, event.d);
+      return;
+    case GatewayDispatchEvents.MessageReactionRemove:
+      await reactionRemove.execute(rest, event.d);
+      return;
+    case GatewayDispatchEvents.InteractionCreate:
+      await interactionCreate(event.d);
+      return;
+    default:
+      break;
+  }
+});
+
+(async () => {
+  await manager.connect();
+})();

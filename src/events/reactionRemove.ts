@@ -1,12 +1,18 @@
-import { Events, PermissionFlagsBits, Routes } from "discord.js";
-import type { Event } from "./index.ts";
 import { getReactionRoleId } from "./reactionAdd.js";
+import {
+  Routes,
+  type GatewayMessageReactionRemoveDispatchData,
+} from "discord-api-types/v10";
+import type { REST } from "@discordjs/rest";
 
 export default {
-  name: Events.MessageReactionRemove,
-  async execute(reaction, user) {
-    if (user.bot) return;
-    const data = await getReactionRoleId(reaction);
+  async execute(
+    rest: REST,
+    reaction: GatewayMessageReactionRemoveDispatchData,
+  ) {
+    if (!reaction.guild_id) return;
+
+    const data = await getReactionRoleId(rest, reaction);
     if (data === null) return;
     const { roleId } = data;
 
@@ -24,14 +30,14 @@ export default {
     // }
 
     try {
-      await reaction.client.rest.delete(
-        Routes.guildMemberRole(reaction.message.guildId, user.id, roleId),
+      await rest.delete(
+        Routes.guildMemberRole(reaction.guild_id, reaction.user_id, roleId),
         {
-          reason: `Reaction role in channel ID ${reaction.message.channelId}. Migrate to Utils: /reaction-role`,
+          reason: `Reaction role in channel ID ${reaction.channel_id}. Migrate to Utils: /reaction-role`,
         },
       );
     } catch (e) {
       console.error(e);
     }
   },
-} satisfies Event<Events.MessageReactionRemove>;
+};

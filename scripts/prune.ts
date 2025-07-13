@@ -4,14 +4,14 @@ import JSONbig_ from "json-bigint";
 import * as schema from "../src/schema.js";
 import { config } from "dotenv";
 import {
+  RESTJSONErrorCodes,
+  Routes,
   type APIApplication,
   type APIGuildMember,
   type APIWebhook,
-  REST,
-  RESTJSONErrorCodes,
-  Routes,
-} from "discord.js";
+} from "discord-api-types/v10";
 import { inArray } from "drizzle-orm";
+import { REST } from "@discordjs/rest";
 
 config({ path: "./.env" });
 

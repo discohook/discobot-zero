@@ -1,19 +1,22 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "name": "discobot-zero",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "tsc",
     "check": "biome check .",
     "format": "biome format . --write",
-    "deploy": "node --require dotenv/config dist/util/deploy.js",
-    "start": "node --require dotenv/config dist/index.js"
+    "deploy": "node --require dotenv/config dist/src/util/deploy.js",
+    "start": "node --require dotenv/config dist/src/bot.js"
   },
   "dependencies": {
-    "@discordjs/core": "^1.2.0",
-    "discord.js": "^14.15.0",
+    "@discordjs/builders": "^1.11.2",
+    "@discordjs/rest": "^2.5.1",
+    "@discordjs/ws": "^2.0.3",
+    "@sapphire/bitfield": "^1.2.4",
+    "discord-api-types": "^0.38.16",
     "dotenv": "^16.3.1",
     "drizzle-orm": "^0.33.0",
     "json-bigint": "^1.0.0",

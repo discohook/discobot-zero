@@ -16,5 +16,5 @@
   "editor.insertSpaces": true,
   "files.insertFinalNewline": true,
   "files.eol": "\n",
-  "npm.packageManager": "npm"
+  "npm.packageManager": "yarn"
 }
