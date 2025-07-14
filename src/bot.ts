@@ -20,17 +20,18 @@ import { ArgumentParser } from "argparse";
 const SHARD_COUNT = 224; // must be a multiple of 16 for large bot sharding - above is 216
 const CLUSTER_COUNT = 4;
 const SHARDS_PER_CLUSTER = Math.floor(SHARD_COUNT / CLUSTER_COUNT);
+const DEV = process.env.ENVIRONMENT === "development";
 
 const argparser = new ArgumentParser();
 argparser.add_argument("--cluster", {
   help: "zero-indexed cluster ID",
-  required: true,
+  required: !DEV,
   choices: Array(CLUSTER_COUNT)
     .fill(undefined)
     .map((_, i) => String(i)),
 });
 
-const cluster = Number(argparser.parse_args().cluster);
+const cluster = Number(argparser.parse_args().cluster ?? 0);
 // const ALL_SHARD_IDS = Array(SHARD_COUNT)
 //   .fill(undefined)
 //   .map((_, i) => i);
@@ -72,11 +73,15 @@ const manager = new WebSocketManager({
     afk: false,
     since: null,
   },
-  shardCount: SHARD_COUNT,
-  shardIds: {
-    start: cluster * SHARDS_PER_CLUSTER,
-    end: Math.min((cluster + 1) * SHARDS_PER_CLUSTER, SHARD_COUNT) - 1,
-  },
+  ...(DEV
+    ? { shardCount: null }
+    : {
+        shardCount: SHARD_COUNT,
+        shardIds: {
+          start: cluster * SHARDS_PER_CLUSTER,
+          end: Math.min((cluster + 1) * SHARDS_PER_CLUSTER, SHARD_COUNT) - 1,
+        },
+      }),
 });
 // debug
 // console.log(manager.getShardIds());

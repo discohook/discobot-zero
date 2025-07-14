@@ -17,29 +17,42 @@ import {
   type APIMessageComponentButtonInteraction,
   type APIActionRowComponent,
   type APIButtonComponent,
+  type RESTPostAPIInteractionFollowupJSONBody,
 } from "discord-api-types/v10";
 
 const inviteUrl = `https://discord.com${Routes.oauth2Authorization()}?client_id=${process.env.MIGRATE_ID}&scope=bot+applications.commands`;
 
 const PermissionsBitField = new BitField(PermissionFlagsBits);
 
-const reply = (
+const followup = (
   rest: REST,
   interaction: APIInteraction,
-  body: APIInteractionResponseCallbackData,
-): Promise<RESTPostAPIInteractionCallbackWithResponseResult> =>
-  rest.post(Routes.interactionCallback(interaction.id, interaction.token), {
-    body: {
-      type: InteractionResponseType.ChannelMessageWithSource,
-      data: body,
-    } satisfies RESTPostAPIInteractionCallbackJSONBody,
-  }) as Promise<RESTPostAPIInteractionCallbackWithResponseResult>;
+  body: RESTPostAPIInteractionFollowupJSONBody,
+) =>
+  rest.patch(
+    Routes.webhookMessage(
+      interaction.application_id,
+      interaction.token,
+      "@original",
+    ),
+    { body },
+  );
 
 export default {
   async execute(
     rest: REST,
     interaction: APIChatInputApplicationCommandGuildInteraction,
   ) {
+    await rest.post(
+      Routes.interactionCallback(interaction.id, interaction.token),
+      {
+        body: {
+          type: InteractionResponseType.DeferredChannelMessageWithSource,
+          data: { flags: MessageFlags.Ephemeral },
+        } satisfies RESTPostAPIInteractionCallbackJSONBody,
+      },
+    );
+
     let utilsMember: APIGuildMember | undefined;
     try {
       utilsMember = (await rest.get(
@@ -69,7 +82,7 @@ export default {
           PermissionFlagsBits.KickMembers,
         );
 
-      await reply(rest, interaction, {
+      await followup(rest, interaction, {
         content: [
           "Hey there, thanks for using Discohook. We have switched bot",
           "accounts for all Discord features, which means",
@@ -99,10 +112,9 @@ export default {
                 .toJSON(),
             ]
           : [],
-        flags: MessageFlags.Ephemeral,
       });
     } else {
-      await reply(rest, interaction, {
+      await followup(rest, interaction, {
         content: [
           "Hey there, thanks for using Discohook. We have switched bot",
           "accounts for all in-Discord features (like reaction roles),",
@@ -135,7 +147,6 @@ export default {
             )
             .toJSON(),
         ],
-        flags: MessageFlags.Ephemeral,
       });
     }
   },
