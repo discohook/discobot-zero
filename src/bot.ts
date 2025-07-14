@@ -13,6 +13,31 @@ import { configDotenv } from "dotenv";
 import reactionAdd from "./events/reactionAdd.js";
 import reactionRemove from "./events/reactionRemove.js";
 import reactionRoleCmd from "./commands/reaction-role.js";
+import { ArgumentParser } from "argparse";
+
+// const APPROX_GUILDS = 325_000;
+// const SHARD_COUNT = Math.floor(APPROX_GUILDS / 1500);
+const SHARD_COUNT = 224; // must be a multiple of 16 for large bot sharding - above is 216
+const CLUSTER_COUNT = 4;
+const SHARDS_PER_CLUSTER = Math.floor(SHARD_COUNT / CLUSTER_COUNT);
+
+const argparser = new ArgumentParser();
+argparser.add_argument("--cluster", {
+  help: "zero-indexed cluster ID",
+  required: true,
+  choices: Array(CLUSTER_COUNT)
+    .fill(undefined)
+    .map((_, i) => String(i)),
+});
+
+const cluster = Number(argparser.parse_args().cluster);
+// const ALL_SHARD_IDS = Array(SHARD_COUNT)
+//   .fill(undefined)
+//   .map((_, i) => i);
+// const SHARD_IDS = ALL_SHARD_IDS.slice(
+//   cluster * SHARDS_PER_CLUSTER,
+//   Math.min((cluster + 1) * SHARDS_PER_CLUSTER, SHARD_COUNT),
+// );
 
 configDotenv();
 
@@ -47,7 +72,14 @@ const manager = new WebSocketManager({
     afk: false,
     since: null,
   },
+  shardCount: SHARD_COUNT,
+  shardIds: {
+    start: cluster * SHARDS_PER_CLUSTER,
+    end: Math.min((cluster + 1) * SHARDS_PER_CLUSTER, SHARD_COUNT) - 1,
+  },
 });
+// debug
+// console.log(manager.getShardIds());
 
 manager.on(WebSocketShardEvents.Ready, (event, shardId) => {
   guildIds.push(
@@ -57,26 +89,26 @@ manager.on(WebSocketShardEvents.Ready, (event, shardId) => {
   console.log(
     `${event.user.username}#${
       event.user.discriminator
-    } ready on shard ID ${shardId} (of ${shards}) with ${
+    } ready on cluster ${cluster}, shard ID ${shardId} (of ${shards}) with ${
       event.guilds.length
     } guilds`,
   );
 });
 
 manager.on(WebSocketShardEvents.Hello, (shardId) => {
-  console.log(`[hello] Shard ID ${shardId}`);
+  console.log(`[hello] Cluster ${cluster}, Shard ${shardId}`);
 });
 
 manager.on(WebSocketShardEvents.Resumed, (shardId) => {
-  console.log(`[resumed] Shard ID ${shardId}`);
+  console.log(`[resumed] Cluster ${cluster}, Shard ${shardId}`);
 });
 
 manager.on(WebSocketShardEvents.Closed, (_, shardId) => {
-  console.log(`[closed] Shard ID ${shardId}`);
+  console.log(`[closed] Cluster ${cluster}, Shard ${shardId}`);
 });
 
 manager.on(WebSocketShardEvents.Error, (error, shardId) => {
-  console.error(`[error] Shard ID ${shardId}:`, error);
+  console.error(`[error] Cluster ${cluster}, Shard ${shardId}:`, error);
 });
 
 const interactionCreate = async (data: APIInteraction) => {
